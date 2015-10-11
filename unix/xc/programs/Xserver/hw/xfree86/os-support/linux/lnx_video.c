@@ -25,6 +25,12 @@
  */
 /* $XConsortium: lnx_video.c /main/9 1996/10/19 18:06:34 kaleb $ */
 
+#ifdef __x86_64__
+#ifndef BITS_PER_LONG
+#define BITS_PER_LONG 64
+#endif
+#endif
+
 #include "X.h"
 #include "input.h"
 #include "scrnintstr.h"

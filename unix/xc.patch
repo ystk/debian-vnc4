@@ -2,7 +2,7 @@
 --- xc/programs/Xserver/Imakefile	Fri Jun  6 11:14:39 2003
 ***************
 *** 409,412 ****
---- 409,429 ----
+--- 409,435 ----
   #endif
   #endif /* XsunServer */
 + XCOMM
@@ -13,12 +13,18 @@
 + CFB16DIR = cfb16
 + CFB24DIR = cfb24
 + CFB32DIR = cfb32
++ FBDIR = fb
 + XVNCDDXDIR = vnc/Xvnc
++ #if VncUseFb
++ XVNCDIRS = $(STDDIRS) $(FBDIR) $(XVNCDDXDIR) $(DEPDIRS)
++ XVNCLIBS = PreFbLibs vnc/Xvnc/LibraryTargetName(xvnc) FbPostFbLibs
++ #else
 + XVNCDIRS = $(STDDIRS) $(MFBDIR) \
 + 	    $(CFB8DIR) $(CFB16DIR) $(CFB24DIR) $(CFB32DIR) \
 + 	    $(XVNCDDXDIR) $(DEPDIRS)
-+ XVNCOBJS = $(XVNCDDXDIR)/stubs.o $(XVNCDDXDIR)/miinitext.o
 + XVNCLIBS = PreFbLibs vnc/Xvnc/LibraryTargetName(xvnc) CFBLibs PostFbLibs
++ #endif
++ XVNCOBJS = $(XVNCDDXDIR)/stubs.o $(XVNCDDXDIR)/miinitext.o
 + XVNCSYSLIBS = $(FONTLIBS) $(SYSLIBS)
 + ServerTarget(Xvnc,$(XVNCDIRS),$(XVNCOBJS), \
 + 	$(LIBCWRAPPER) $(XVNCLIBS) $(LOADABLEEXTS),$(XVNCSYSLIBS))

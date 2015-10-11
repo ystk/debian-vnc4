@@ -19,6 +19,8 @@
 // CConn.cxx
 //
 
+#include <termios.h>
+#include <stdio.h>
 #include <unistd.h>
 #include "CConn.h"
 #include <rfb/CMsgWriter.h>
@@ -50,7 +52,7 @@ StringParameter menuKey("MenuKey", "The key which brings up the popup menu",
 StringParameter windowName("name", "The X window name", "");
 
 CConn::CConn(Display* dpy_, int argc_, char** argv_, network::Socket* sock_,
-             char* vncServerName, bool reverse)
+             char* vncServerName, bool reverse, int ipVersion)
   : dpy(dpy_), argc(argc_),
     argv(argv_), serverHost(0), serverPort(0), sock(sock_), viewport(0),
     desktop(0), desktopEventHandler(0),
@@ -86,14 +88,31 @@ CConn::CConn(Display* dpy_, int argc_, char** argv_, network::Socket* sock_,
     if (vncServerName) {
       getHostAndPort(vncServerName, &serverHost, &serverPort);
     } else {
-      ServerDialog dlg(dpy, &options, &about);
-      if (!dlg.show() || dlg.entry.getText()[0] == 0) {
-        exit(1);
+      int popup = popupXDialog;
+      if (!popup) {
+        /* Get server */
+        fprintf(stderr, "Server: ");
+        vncServerName = new char[128];
+	if(fgets(vncServerName, 128, stdin)) {
+	  size_t len = strlen(vncServerName);
+	  /* remove \n at the end */
+          if(vncServerName[len-1] == '\n')
+            vncServerName[len-1] = '\0';
+        } else {
+          /* fgets failed, probably eof -- assume empty string as input */
+          vncServerName[0] = '\0';
+        }
+	getHostAndPort(vncServerName, &serverHost, &serverPort);
+      } else {
+        ServerDialog dlg(dpy, &options, &about);
+        if (!dlg.show() || dlg.entry.getText()[0] == 0) {
+          exit(1);
+        }
+        getHostAndPort(dlg.entry.getText(), &serverHost, &serverPort);
       }
-      getHostAndPort(dlg.entry.getText(), &serverHost, &serverPort);
     }
 
-    sock = new network::TcpSocket(serverHost, serverPort);
+    sock = new network::TcpSocket(serverHost, serverPort, ipVersion);
     vlog.info("connected to host %s port %d", serverHost, serverPort);
   }
 
@@ -194,6 +213,9 @@ void CConn::blockCallback() {
 
 void CConn::getUserPasswd(char** user, char** password)
 {
+  struct termios oldio;
+  struct termios newio;
+
   CharArray passwordFileStr(passwordFile.getData());
   if (!user && passwordFileStr.buf[0]) {
     FILE* fp = fopen(passwordFileStr.buf, "r");
@@ -206,15 +228,49 @@ void CConn::getUserPasswd(char** user, char** password)
     return;
   }
 
-  const char* secType = secTypeName(getCurrentCSecurity()->getType());
-  const char* titlePrefix = "VNC Authentication";
-  CharArray title(strlen(titlePrefix) + strlen(secType) + 4);
-  sprintf(title.buf, "%s [%s]", titlePrefix, secType);
-  PasswdDialog dlg(dpy, title.buf, !user);
-  if (!dlg.show()) throw rfb::Exception("Authentication cancelled");
-  if (user)
-    *user = strDup(dlg.userEntry.getText());
-  *password = strDup(dlg.passwdEntry.getText());
+  int popup = popupXDialog;
+  if (!popup) {
+    if (user) {
+      /* Get username */
+      fprintf(stderr, "Username: ");
+      *user = new char[128];
+      fgets(*user, 128, stdin);
+      /* Remove \n at the end */
+      (*user)[strlen(*user)-1] = '\0';
+    }
+
+    if (tcgetattr (fileno (stdin), &oldio) != 0) {
+      popup = 1;
+    } else {
+      newio = oldio;
+      newio.c_lflag &= ~ECHO;
+      fprintf(stderr, "Password: ");
+      /* Echo off */
+      if (tcsetattr (fileno (stdin), TCSAFLUSH, &newio) != 0)
+	popup = 1;
+      
+      /* Read the password. */
+      *password = new char[64];
+      fgets (*password, 64, stdin);
+      /* Remove \n at the end */
+      (*password)[strlen(*password)-1] = '\0';
+
+      /* Restore terminal. */
+      (void) tcsetattr (fileno (stdin), TCSAFLUSH, &oldio);
+    }
+  }
+
+  if (popup) {
+    const char* secType = secTypeName(getCurrentCSecurity()->getType());
+    const char* titlePrefix = "VNC Authentication";
+    CharArray title(strlen(titlePrefix) + strlen(secType) + 4);
+    sprintf(title.buf, "%s [%s]", titlePrefix, secType);
+    PasswdDialog dlg(dpy, title.buf, !user);
+    if (!dlg.show()) throw rfb::Exception("Authentication cancelled");
+    if (user)
+      *user = strDup(dlg.userEntry.getText());
+    *password = strDup(dlg.passwdEntry.getText());
+  }
 }
 
 
@@ -245,9 +301,16 @@ void CConn::serverInit() {
   fullColourPF = desktop->getPF();
   if (!serverPF.trueColour)
     fullColour = true;
-  recreateViewport();
+  CharArray xEmbedStr(xEmbed.getData());
+  if (!xEmbedStr.buf[0])
+    recreateViewport();
   formatChange = encodingChange = true;
   requestNewUpdate();
+  if (xEmbedStr.buf[0]) {
+    unsigned int targetWindow = 0;
+    targetWindow = strtol(xEmbed.getData(), NULL, 0);
+    XReparentWindow(dpy, desktop->win(), (Window) targetWindow, 0, 0);
+  }
 }
 
 // setDesktopSize() is called when the desktop size changes (including when

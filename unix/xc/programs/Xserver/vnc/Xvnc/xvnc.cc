@@ -48,8 +48,12 @@ extern "C" {
 #include "X11/Xos.h"
 #include "scrnintstr.h"
 #include "servermd.h"
+#ifdef VNC_USE_FB
+#include "fb.h"
+#else
 #define PSZ 8
 #include "cfb.h"
+#endif
 #include "mi.h"
 #include "mibstore.h"
 #include "colormapst.h"
@@ -73,6 +77,7 @@ extern "C" {
 #undef public
 #undef xor
 #undef and
+#ifndef VNC_USE_FB
   extern Bool cfb16ScreenInit(ScreenPtr, pointer, int, int, int, int, int);
   extern Bool cfb32ScreenInit(ScreenPtr, pointer, int, int, int, int, int);
   extern Bool cfb16CreateGC(GCPtr);
@@ -83,6 +88,7 @@ extern "C" {
                             unsigned long, char*);
   extern void cfb32GetImage(DrawablePtr, int, int, int, int, unsigned int,
                             unsigned long, char*);
+#endif
 }
 
 #define XVNCVERSION "Free Edition 4.1.1"
@@ -100,6 +106,16 @@ extern int monitorResolution;
 #define VFB_DEFAULT_BLACKPIXEL 0
 #define VFB_DEFAULT_LINEBIAS 0
 #define XWD_WINDOW_NAME_LEN 60
+
+#ifdef RANDR
+
+extern "C" {
+#include <randrstr.h>
+}
+
+#define RR_MAX_SCREEN_SIZES	8
+typedef struct { int width, height; } rrScreenSize;
+#endif
 
 typedef struct
 {
@@ -121,7 +137,10 @@ typedef struct
   Bool pixelFormatDefined;
   Bool rgbNotBgr;
   int redBits, greenBits, blueBits;
-
+#ifdef RANDR
+  int rrScreenSizesDefined;
+  rrScreenSize rrScreenSizes[RR_MAX_SCREEN_SIZES];
+#endif
 } vfbScreenInfo, *vfbScreenInfoPtr;
 
 static int vfbNumScreens;
@@ -129,6 +148,9 @@ static vfbScreenInfo vfbScreens[MAXSCREENS];
 static Bool vfbPixmapDepths[33];
 static char needswap = 0;
 static int lastScreen = -1;
+#ifdef RENDER
+static Bool Render = FALSE;
+#endif
 
 static bool displaySpecified = false;
 static bool wellKnownSocketsCreated = false;
@@ -166,6 +188,11 @@ static void vfbInitializeDefaultScreens()
     vfbScreens[i].lineBias = VFB_DEFAULT_LINEBIAS;
     vfbScreens[i].pixelFormatDefined = FALSE;
     vfbScreens[i].pfbMemory = NULL;
+#ifdef RANDR
+    vfbScreens[i].rrScreenSizesDefined = 0;
+    vfbScreens[i].rrScreenSizes[0].width = VFB_DEFAULT_WIDTH;
+    vfbScreens[i].rrScreenSizes[0].height = VFB_DEFAULT_HEIGHT;
+#endif
   }
   vfbNumScreens = 1;
 }
@@ -220,6 +247,10 @@ extern "C" {
            VENDOR_STRING);
     ErrorF("-screen scrn WxHxD     set screen's width, height, depth\n");
     ErrorF("-pixdepths list-of-int support given pixmap depths\n");
+#ifdef RENDER
+    ErrorF("+/-render             turn on/off RENDER extension support"
+          "(default on)\n");
+#endif
     ErrorF("-linebias n            adjust thin line pixelization\n");
     ErrorF("-blackpixel n          pixel value for black\n");
     ErrorF("-whitepixel n          pixel value for white\n");
@@ -316,6 +347,20 @@ int ddxProcessArgument(int argc, char *argv[], int i)
     return ret;
   }
 
+#ifdef RENDER
+  if (strcmp (argv[i], "+render") == 0)        /* +render */
+  {
+    Render = TRUE;
+    return 1;
+  }
+
+  if (strcmp (argv[i], "-render") == 0)        /* -render */
+  {
+    Render = FALSE;
+    return 1;
+  }
+#endif
+
   if (strcmp (argv[i], "-blackpixel") == 0)	/* -blackpixel n */
   {
     Pixel pix;
@@ -379,11 +424,45 @@ int ddxProcessArgument(int argc, char *argv[], int i)
   if (strcmp(argv[i], "-geometry") == 0)
   {
     if (++i >= argc) UseMsg();
+#ifdef RANDR
+    if (vfbScreens[0].rrScreenSizesDefined == RR_MAX_SCREEN_SIZES)
+    {
+      ErrorF("Too many modes\n");
+      UseMsg();
+    }
+    else
+    {
+      rrScreenSize *rrss;
+      rrss = &(vfbScreens[0].rrScreenSizes[vfbScreens[0].rrScreenSizesDefined]);
+      if (sscanf(argv[i], "%dx%d", &rrss->width, &rrss->height) != 2 ||
+	  rrss->width <= 32 && rrss->height <= 32) {
+	ErrorF("Invalid geometry %s\n", argv[i]);
+	UseMsg();
+      }
+      else
+      {
+	if (vfbScreens[0].rrScreenSizesDefined == 0) {
+	  vfbScreens[0].width = rrss->width;
+	  vfbScreens[0].height = rrss->height;
+	}
+	else
+	{
+	  if (vfbScreens[0].width < rrss->width)
+	    vfbScreens[0].width = rrss->width;
+	  if (vfbScreens[0].height < rrss->height)
+	    vfbScreens[0].height = rrss->height;
+	}
+
+	vfbScreens[0].rrScreenSizesDefined++;
+      }
+    }
+#else
     if (sscanf(argv[i],"%dx%d",&vfbScreens[0].width,
                &vfbScreens[0].height) != 2) {
       ErrorF("Invalid geometry %s\n", argv[i]);
       UseMsg();
     }
+#endif
     return 2;
   }
 
@@ -482,7 +561,7 @@ CARD32 GetTimeInMillis()
 }
 #endif
 
-
+#ifndef VNC_USE_FB
 static Bool vfbMultiDepthCreateGC(GCPtr   pGC)
 {
   switch (vfbBitsPerPixel(pGC->depth))
@@ -541,6 +620,7 @@ vfbMultiDepthGetImage(DrawablePtr pDrawable, int sx, int sy, int w, int h,
     break;
   }
 }
+#endif
 
 static ColormapPtr InstalledMaps[MAXSCREENS];
 
@@ -792,6 +872,195 @@ static miPointerScreenFuncRec vfbPointerScreenFuncs = {
   miPointerWarpCursor
 };
 
+#ifdef RANDR
+
+static Bool vncRandRGetInfo (ScreenPtr pScreen, Rotation *rotations)
+{
+  vfbScreenInfoPtr pvfb = &vfbScreens[pScreen->myNum];
+  int dpi = monitorResolution ? monitorResolution : 100;
+  int i;
+
+  if (pvfb->rrScreenSizesDefined == 0)
+    pvfb->rrScreenSizesDefined = 1;	/* case without -geometry */
+
+  for (i = 0; i < pvfb->rrScreenSizesDefined; i++)
+  {
+    RRScreenSizePtr pSize;
+
+    pSize = RRRegisterSize(pScreen,
+		pvfb->rrScreenSizes[i].width, pvfb->rrScreenSizes[i].height,
+		(pvfb->rrScreenSizes[i].width * 254 + dpi * 5) / (dpi * 10),
+		(pvfb->rrScreenSizes[i].height * 254 + dpi * 5) / (dpi * 10));
+    if (!pSize)
+      return FALSE;
+    RRRegisterRate(pScreen, pSize, 60);
+
+    if (pvfb->rrScreenSizes[i].width == pScreen->width &&
+	pvfb->rrScreenSizes[i].height == pScreen->height)
+      RRSetCurrentConfig(pScreen, RR_Rotate_0, 60, pSize);
+  }
+
+  *rotations = RR_Rotate_0;
+  return TRUE;
+}
+
+/* from hw/xfree86/common/xf86Helper.c */
+
+#include "mivalidate.h"
+static void
+xf86SetRootClip (ScreenPtr pScreen, Bool enable)
+{
+    WindowPtr	pWin = WindowTable[pScreen->myNum];
+    WindowPtr	pChild;
+    Bool	WasViewable = (Bool)(pWin->viewable);
+    Bool	anyMarked = FALSE;
+    RegionPtr	pOldClip = NULL, bsExposed;
+#ifdef DO_SAVE_UNDERS
+    Bool	dosave = FALSE;
+#endif
+    WindowPtr   pLayerWin;
+    BoxRec	box;
+
+    if (WasViewable)
+    {
+	for (pChild = pWin->firstChild; pChild; pChild = pChild->nextSib)
+	{
+	    (void) (*pScreen->MarkOverlappedWindows)(pChild,
+						     pChild,
+						     &pLayerWin);
+	}
+	(*pScreen->MarkWindow) (pWin);
+	anyMarked = TRUE;
+	if (pWin->valdata)
+	{
+	    if (HasBorder (pWin))
+	    {
+		RegionPtr	borderVisible;
+
+		borderVisible = REGION_CREATE(pScreen, NullBox, 1);
+		REGION_SUBTRACT(pScreen, borderVisible,
+				&pWin->borderClip, &pWin->winSize);
+		pWin->valdata->before.borderVisible = borderVisible;
+	    }
+	    pWin->valdata->before.resized = TRUE;
+	}
+    }
+    
+    /*
+     * Use REGION_BREAK to avoid optimizations in ValidateTree
+     * that assume the root borderClip can't change well, normally
+     * it doesn't...)
+     */
+    if (enable)
+    {
+	box.x1 = 0;
+	box.y1 = 0;
+	box.x2 = pScreen->width;
+	box.y2 = pScreen->height;
+	REGION_INIT (pScreen, &pWin->winSize, &box, 1);
+	REGION_INIT (pScreen, &pWin->borderSize, &box, 1);
+	if (WasViewable)
+	    REGION_RESET(pScreen, &pWin->borderClip, &box);
+	pWin->drawable.width = pScreen->width;
+	pWin->drawable.height = pScreen->height;
+        REGION_BREAK (pWin->drawable.pScreen, &pWin->clipList);
+    }
+    else
+    {
+	REGION_EMPTY(pScreen, &pWin->borderClip);
+	REGION_BREAK (pWin->drawable.pScreen, &pWin->clipList);
+    }
+    
+    ResizeChildrenWinSize (pWin, 0, 0, 0, 0);
+    
+    if (WasViewable)
+    {
+	if (pWin->backStorage)
+	{
+	    pOldClip = REGION_CREATE(pScreen, NullBox, 1);
+	    REGION_COPY(pScreen, pOldClip, &pWin->clipList);
+	}
+
+	if (pWin->firstChild)
+	{
+	    anyMarked |= (*pScreen->MarkOverlappedWindows)(pWin->firstChild,
+							   pWin->firstChild,
+							   (WindowPtr *)NULL);
+	}
+	else
+	{
+	    (*pScreen->MarkWindow) (pWin);
+	    anyMarked = TRUE;
+	}
+
+#ifdef DO_SAVE_UNDERS
+	if (DO_SAVE_UNDERS(pWin))
+	{
+	    dosave = (*pScreen->ChangeSaveUnder)(pLayerWin, pLayerWin);
+	}
+#endif /* DO_SAVE_UNDERS */
+
+	if (anyMarked)
+	    (*pScreen->ValidateTree)(pWin, NullWindow, VTOther);
+    }
+
+    if (pWin->backStorage &&
+	((pWin->backingStore == Always) || WasViewable))
+    {
+	if (!WasViewable)
+	    pOldClip = &pWin->clipList; /* a convenient empty region */
+	bsExposed = (*pScreen->TranslateBackingStore)
+			     (pWin, 0, 0, pOldClip,
+			      pWin->drawable.x, pWin->drawable.y);
+	if (WasViewable)
+	    REGION_DESTROY(pScreen, pOldClip);
+	if (bsExposed)
+	{
+	    RegionPtr	valExposed = NullRegion;
+    
+	    if (pWin->valdata)
+		valExposed = &pWin->valdata->after.exposed;
+	    (*pScreen->WindowExposures) (pWin, valExposed, bsExposed);
+	    if (valExposed)
+		REGION_EMPTY(pScreen, valExposed);
+	    REGION_DESTROY(pScreen, bsExposed);
+	}
+    }
+    if (WasViewable)
+    {
+	if (anyMarked)
+	    (*pScreen->HandleExposures)(pWin);
+#ifdef DO_SAVE_UNDERS
+	if (dosave)
+	    (*pScreen->PostChangeSaveUnder)(pLayerWin, pLayerWin);
+#endif /* DO_SAVE_UNDERS */
+	if (anyMarked && pScreen->PostValidateTree)
+	    (*pScreen->PostValidateTree)(pWin, NullWindow, VTOther);
+    }
+    if (pWin->realized)
+	WindowsRestructured ();
+    FlushAllOutput ();
+}
+
+extern void vncHooksResizeScreen(ScreenPtr pScreen);
+
+static Bool vncRandRSetConfig (ScreenPtr pScreen, Rotation rotation,
+		    int	rate, RRScreenSizePtr pSize)
+{
+  int dpi = monitorResolution ? monitorResolution : 100;
+
+  pScreen->width = pSize->width;
+  pScreen->height = pSize->height;
+  pScreen->mmWidth = (pScreen->width * 254 + dpi * 5) / (dpi * 10);
+  pScreen->mmHeight = (pScreen->height * 254 + dpi * 5) / (dpi * 10);
+
+  xf86SetRootClip(pScreen, TRUE);
+  vncHooksResizeScreen(pScreen);
+  return TRUE;
+}
+
+#endif
+
 static Bool vfbScreenInit(int index, ScreenPtr pScreen, int argc, char** argv)
 {
   vfbScreenInfoPtr pvfb = &vfbScreens[index];
@@ -811,6 +1080,16 @@ static Bool vfbScreenInit(int index, ScreenPtr pScreen, int argc, char** argv)
   defaultColorVisualClass
     = (pvfb->bitsPerPixel > 8) ? TrueColor : PseudoColor;
 
+#ifdef VNC_USE_FB
+  if (!fbScreenInit(pScreen, pbits, pvfb->width, pvfb->height,
+                    dpi, dpi, pvfb->paddedWidth, pvfb->bitsPerPixel))
+      return FALSE;
+
+#ifdef RENDER
+  if (ret && Render)
+      fbPictureInit(pScreen, 0, 0);
+#endif /* RENDER */
+#else /* VNC_USE_FB */
   switch (pvfb->bitsPerPixel)
   {
   case 1:
@@ -838,6 +1117,7 @@ static Bool vfbScreenInit(int index, ScreenPtr pScreen, int argc, char** argv)
   pScreen->CreateGC = vfbMultiDepthCreateGC;
   pScreen->GetImage = vfbMultiDepthGetImage;
   pScreen->GetSpans = vfbMultiDepthGetSpans;
+#endif
 
   pScreen->InstallColormap = vfbInstallColormap;
   pScreen->UninstallColormap = vfbUninstallColormap;
@@ -883,6 +1163,9 @@ static Bool vfbScreenInit(int index, ScreenPtr pScreen, int argc, char** argv)
     }
   }
 
+#ifdef VNC_USE_FB
+  ret = fbCreateDefColormap(pScreen);
+#else
   if (pvfb->bitsPerPixel == 1)
   {
     ret = mfbCreateDefColormap(pScreen);
@@ -891,12 +1174,27 @@ static Bool vfbScreenInit(int index, ScreenPtr pScreen, int argc, char** argv)
   {
     ret = cfbCreateDefColormap(pScreen);
   }
+#endif
 
   miSetZeroLineBias(pScreen, pvfb->lineBias);
 
 #ifndef NO_INIT_BACKING_STORE
   miInitializeBackingStore(pScreen);
   pScreen->backingStoreSupport = Always;
+#endif
+
+#ifdef RANDR
+  if (!ret) return FALSE;
+
+  {
+    rrScrPrivPtr rp;
+		
+    ret = RRScreenInit(pScreen);
+    if (!ret) return FALSE;
+    rp = rrGetScrPriv(pScreen);
+    rp->rrGetInfo = vncRandRGetInfo;
+    rp->rrSetConfig = vncRandRSetConfig;
+  }
 #endif
 
   return ret;
@@ -925,6 +1223,19 @@ void InitOutput(ScreenInfo *screenInfo, int argc, char **argv)
   {
     vfbPixmapDepths[vfbScreens[i].depth] = TRUE;
   }
+
+#ifdef RENDER
+  /* RENDER needs a good set of pixmaps. */
+  if (Render) {
+      vfbPixmapDepths[1] = TRUE;
+      vfbPixmapDepths[4] = TRUE;
+      vfbPixmapDepths[8] = TRUE;
+/*    vfbPixmapDepths[15] = TRUE; */
+      vfbPixmapDepths[16] = TRUE;
+      vfbPixmapDepths[24] = TRUE;
+      vfbPixmapDepths[32] = TRUE;
+  }
+#endif
 
   for (i = 1; i <= 32; i++)
   {
@@ -1215,4 +1526,18 @@ void InitInput(int argc, char *argv[])
   RegisterKeyboardDevice(k);
   miRegisterPointerDevice(screenInfo.screens[0], p);
   (void)mieqInit ((DevicePtr)k, (DevicePtr)p);
+
+  // Use this point as a hook to set initial screen geometry
+  // We could not do it before vncExtensionInit() call, because
+  // at that point pScreen->width should correspond to real framebuffer width
+  {
+    ScreenPtr pScreen = screenInfo.screens[0];
+    vfbScreenInfoPtr pvfb = &vfbScreens[0];
+    int dpi = monitorResolution ? monitorResolution : 100;
+    pScreen->width = pvfb->rrScreenSizes[0].width;
+    pScreen->height = pvfb->rrScreenSizes[0].height;
+    pScreen->mmWidth = (pScreen->width * 254 + dpi * 5) / (dpi * 10);
+    pScreen->mmHeight = (pScreen->height * 254 + dpi * 5) / (dpi * 10);
+    vncHooksResizeScreen(pScreen);
+  }
 }

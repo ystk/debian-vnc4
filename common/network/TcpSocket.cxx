@@ -35,6 +35,7 @@
 #include <string.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <cstdlib>
 #endif
 
 #include <network/TcpSocket.h>
@@ -53,6 +54,29 @@ using namespace network;
 using namespace rdr;
 
 static rfb::LogWriter vlog("TcpSocket");
+
+/* Tunnelling support. */
+int network::findFreeTcpPort (void)
+{
+  int sock, port;
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = INADDR_ANY;
+
+  if ((sock = socket (AF_INET, SOCK_STREAM, 0)) < 0)
+    throw SocketException ("unable to create socket", errorNumber);
+
+  for (port = TUNNEL_PORT_OFFSET + 99; port > TUNNEL_PORT_OFFSET; port--) {
+    addr.sin_port = htons ((unsigned short) port);
+    if (bind (sock, (struct sockaddr *)&addr, sizeof (addr)) == 0) {
+      close (sock);
+      return port;
+    }
+  }
+  throw SocketException ("no free port in range", 0);
+  return 0;
+}
 
 
 // -=- Socket initialisation
@@ -80,48 +104,78 @@ TcpSocket::TcpSocket(int sock, bool close)
 {
 }
 
-TcpSocket::TcpSocket(const char *host, int port)
+TcpSocket::TcpSocket(const char *host, int port, int version)
   : closeFd(true)
 {
-  int sock;
+  int sock, res, error = 0;
+  int connected = 0;
+  struct addrinfo hints;
+  struct addrinfo *hostaddr = NULL;
+  struct addrinfo *tmpaddr;
+  char portstring[16];
 
-  // - Create a socket
   initSockets();
-  if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    throw SocketException("unable to create socket", errorNumber);
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_NUMERICSERV;
+  if (version == 6) {
+#ifdef AF_INET6
+    hints.ai_family = AF_INET6;
+#else
+    throw SocketException("IPv6 not supported", errorNumber);
+#endif
+  } else
+    hints.ai_family = (version == 4) ? AF_INET : 0;
+
+  // - This is silly but it's easier than changing the interface
+  snprintf(portstring, sizeof(portstring), "%d", port);
+
+  res = getaddrinfo(host, portstring, &hints, &hostaddr);
+  if (res == EAI_NONAME) {
+    hints.ai_flags = AI_CANONNAME;
+    res = getaddrinfo(host, portstring, &hints, &hostaddr);
+  } else if(hostaddr)
+    hostaddr->ai_canonname = NULL;
+  if (res || !hostaddr)
+    throw SocketException("unable to resolve host by name", errorNumber);
+
+  // - Try to connect to every listed round robin IP
+  tmpaddr = hostaddr;
+  errno = 0;
+  for (tmpaddr = hostaddr; tmpaddr; tmpaddr = tmpaddr->ai_next) {
+    if (tmpaddr->ai_family == AF_UNIX)
+      continue;
+
+    // - Create a socket
+    sock = socket(tmpaddr->ai_family, SOCK_STREAM, 0);
+    if (sock < 0) {
+      error = errorNumber;
+      freeaddrinfo(hostaddr);
+      throw SocketException("unable to create socket", error);
+    }
 
 #ifndef WIN32
-  // - By default, close the socket on exec()
-  fcntl(sock, F_SETFD, FD_CLOEXEC);
+    // - By default, close the socket on exec()
+    fcntl(sock, F_SETFD, FD_CLOEXEC);
 #endif
 
-  // - Connect it to something
-
-  // Try processing the host as an IP address
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = inet_addr(host);
-  addr.sin_port = htons(port);
-  if ((int)addr.sin_addr.s_addr == -1) {
-    // Host was not an IP address - try resolving as DNS name
-    struct hostent *hostinfo;
-    hostinfo = gethostbyname(host);
-    if (hostinfo && hostinfo->h_addr) {
-      addr.sin_addr.s_addr = ((struct in_addr *)hostinfo->h_addr)->s_addr;
-    } else {
-      int e = errorNumber;
+    // Attempt to connect to the remote host
+    do {
+      res = connect(sock, tmpaddr->ai_addr, tmpaddr->ai_addrlen);
+    } while (res != 0 && errorNumber == EINTR);
+    if (res != 0) {
+      error = errorNumber;
       closesocket(sock);
-      throw SocketException("unable to resolve host by name", e);
+      continue;
     }
-  }
 
-  // Attempt to connect to the remote host
-  if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-    int e = errorNumber;
-    closesocket(sock);
-    throw SocketException("unable to connect to host", e);
+    connected++;
+    break;
   }
+  freeaddrinfo(hostaddr);
+  if (!connected)
+    throw SocketException("unable to connect to host", error);
 
   // Disable Nagle's algorithm, to reduce latency
   enableNagles(sock, false);
@@ -260,9 +314,38 @@ TcpListener::TcpListener(int port, bool localhostOnly, int sock, bool close_)
     return;
   }
 
+  bool use_ipv6;
+  int af;
+#ifdef AF_INET6
+  // - localhostOnly will mean "127.0.0.1 only", no IPv6
+  if (use_ipv6 = !localhostOnly)
+    af = AF_INET6;
+  else
+    af = AF_INET;
+#else
+  use_ipv6 = false;
+  af = AF_INET;
+#endif
+
   initSockets();
-  if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    throw SocketException("unable to create listening socket", errorNumber);
+  if ((fd = socket(af, SOCK_STREAM, 0)) < 0) {
+    // - Socket creation failed
+    if (use_ipv6) {
+      // - We were trying to make an IPv6-capable socket - try again, but IPv4-only
+      use_ipv6 = false;
+      af = AF_INET;
+      fd = socket(af, SOCK_STREAM, 0);
+    }
+    if (fd < 0)
+      throw SocketException("unable to create listening socket", errorNumber);
+  } else {
+    // - Socket creation succeeded
+    if (use_ipv6) {
+      // - We made an IPv6-capable socket, and we need it to do IPv4 too
+      int opt = 0;
+      setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
+    }
+  }
 
 #ifndef WIN32
   // - By default, close the socket on exec()
@@ -279,14 +362,25 @@ TcpListener::TcpListener(int port, bool localhostOnly, int sock, bool close_)
 
   // - Bind it to the desired port
   struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-  if (localhostOnly)
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  else
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+  struct sockaddr_in6 addr6;
+  struct sockaddr *sa;
+  int sa_len;
+  if (use_ipv6) {
+    memset(&addr6, 0, (sa_len = sizeof(addr6)));
+    addr6.sin6_family = af;
+    addr6.sin6_port = htons(port);
+    sa = (struct sockaddr*) &addr6;
+  } else {
+    memset(&addr, 0, (sa_len = sizeof(addr)));
+    addr.sin_family = af;
+    addr.sin_port = htons(port);
+    if (localhostOnly)
+      addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    else
+      addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    sa = (struct sockaddr*) &addr;
+  }
+  if (bind(fd, sa, sa_len) < 0) {
     int e = errorNumber;
     closesocket(fd);
     throw SocketException("unable to bind listening socket", e);

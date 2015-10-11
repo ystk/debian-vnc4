@@ -96,7 +96,7 @@ GetKbdLeds(InputInfoPtr pInfo)
 
 #ifdef __sparc__
 #include <asm/param.h>
-#include <asm/kbio.h>
+/*#include <asm/kbio.h>*/
 #endif
 
 static int
@@ -107,19 +107,19 @@ KDKBDREP_ioctl_ok(int rate, int delay) {
    struct kbd_repeat kbdrep_s;
 
    /* don't change, just test */
-   kbdrep_s.rate = -1;
+   /*kbdrep_s.rate = -1;*/
    kbdrep_s.delay = -1;
    if (ioctl( 0, KDKBDREP, &kbdrep_s )) {
        return 0;
    }
 
    /* do the change */
-   if (rate == 0)				/* switch repeat off */
-     kbdrep_s.rate = 0;
-   else
-     kbdrep_s.rate  = 10000 / rate;		/* convert cps to msec */
-   if (kbdrep_s.rate < 1)
-     kbdrep_s.rate = 1;
+   /*if (rate == 0)*/				/* switch repeat off */
+   /*  kbdrep_s.rate = 0;*/
+   /*else
+     kbdrep_s.rate  = 10000 / rate;*/		/* convert cps to msec */
+   /*if (kbdrep_s.rate < 1)
+     kbdrep_s.rate = 1;*/
    kbdrep_s.delay = delay;
    if (kbdrep_s.delay < 1)
      kbdrep_s.delay = 1;
@@ -144,10 +144,10 @@ KIOCSRATE_ioctl_ok(int rate, int delay) {
    if (fd == -1) 
      return 0;   
 
-   kbdrate_s.rate = (rate + 5) / 10;  /* must be integer, so round up */
+   /*kbdrate_s.rate = (rate + 5) / 10;*/  /* must be integer, so round up */
    kbdrate_s.delay = delay * HZ / 1000;  /* convert ms to Hz */
-   if (kbdrate_s.rate > 50)
-     kbdrate_s.rate = 50;
+   /*if (kbdrate_s.rate > 50)
+     kbdrate_s.rate = 50;*/
 
    if (ioctl( fd, KIOCSRATE, &kbdrate_s ))
      return 0;

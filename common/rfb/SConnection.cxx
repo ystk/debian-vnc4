@@ -181,6 +181,16 @@ void SConnection::processSecurityTypeMsg()
   vlog.info("Client requests security type %s(%d)",
             secTypeName(secType),secType);
 
+  std::list<rdr::U8> secTypes;
+  std::list<rdr::U8>::iterator i;
+  securityFactory->getSecTypes(&secTypes, reverseConnection);
+  for (i=secTypes.begin(); i!=secTypes.end(); i++)
+    if (*i == secType)
+      break;
+
+  if (*i != secType)
+    throwConnFailedException("Unexpected security type");
+
   try {
     state_ = RFBSTATE_SECURITY;
     security = securityFactory->getSSecurity(secType, reverseConnection);

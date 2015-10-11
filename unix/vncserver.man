@@ -53,6 +53,7 @@ name of the desktop.
 .TP
 .B \-geometry \fIwidth\fPx\fIheight\fP
 Specify the size of the desktop to be created. Default is 1024x768. 
+Can be specified as an array or scalar for geometry.
 
 .TP
 .B \-depth \fIdepth\fP

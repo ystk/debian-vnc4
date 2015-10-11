@@ -36,7 +36,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
-
+#include <iostream>
 
 //#include <rfb/Encoder.h>
 
@@ -48,6 +48,9 @@ LogWriter vlog("main");
 
 StringParameter displayname("display", "The X display", "");
 IntParameter rfbport("rfbport", "TCP port to listen for RFB protocol",5900);
+BoolParameter localhostOnly("localhost",
+                            "Only allow connections from localhost",
+                            false);
 IntParameter queryConnectTimeout("QueryConnectTimeout",
                                  "Number of seconds to show the Accept Connection dialog before "
                                  "rejecting the connection",
@@ -293,7 +296,7 @@ int main(int argc, char** argv)
     QueryConnHandler qcHandler(dpy, &server);
     server.setQueryConnectionHandler(&qcHandler);
 
-    TcpListener listener((int)rfbport);
+    TcpListener listener((int)rfbport, localhostOnly);
     vlog.info("Listening on port %d", (int)rfbport);
 
     while (true) {
@@ -307,6 +310,8 @@ int main(int argc, char** argv)
       TXWindow::handleXEvents(dpy);
       
       // Process expired timers and get the time until the next one
+      tv.tv_sec = 0;
+      tv.tv_usec = 100000;
       int timeoutMs = Timer::checkTimeouts();
       soonestTimeout(&timeoutMs, server.checkTimeouts());
       if (timeoutMs) {

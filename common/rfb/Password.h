@@ -27,6 +27,7 @@ namespace rfb {
   class PlainPasswd : public CharArray {
   public:
     PlainPasswd();
+    PlainPasswd(int l);
     PlainPasswd(char* pwd);
     PlainPasswd(const ObfuscatedPasswd& obfPwd);
     ~PlainPasswd();

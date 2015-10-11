@@ -8,7 +8,9 @@ extern int iopl __P ((int __level));
 
 /* new pciconfig_iobase syscall added in 2.2.15 and 2.3.99 */
 #  include <linux/unistd.h>
-#  include <asm/pci.h>
+/* No longer include asm/pci.h on alpha on Debian as it do not exist in any
+ * package (Ola Lundqvist) */
+/*  include <asm/pci.h>*/
 extern long (*_iobase)(unsigned, int, int, int);
 
 /*

@@ -738,7 +738,7 @@ VENDORMANVERSION = XVendorManVersionString
 #endif
 #endif
 #ifndef DefaultRGBDatabase
-#define DefaultRGBDatabase $(LIBDIR)/rgb
+#define DefaultRGBDatabase /usr/share/X11/rgb
 #endif
 #ifndef UseRgbTxt
 #define UseRgbTxt		NO	/* default is to compile with dbm */
@@ -1548,7 +1548,7 @@ XCOMM X Window System make variables; these need to be coordinated with rules
            DOCDIR = DocDir
        DOCHTMLDIR = DocHtmlDir
          DOCPSDIR = DocPsDir
-          FONTDIR = FontDir		/* font directories */
+          FONTDIR = /usr/share/fonts/X11		/* font directories */
      ENCODINGSDIR = $(FONTDIR)/encodings /* font encodings directory */
          XINITDIR = XinitDir		/* xinit config files */
            XDMDIR = XdmDir		/* xdm config files */

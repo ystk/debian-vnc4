@@ -14,7 +14,15 @@
 #include "fbdevhw.h"
 #include "fbpriv.h"
 
-#include "asm/page.h"	/* #define for PAGE_* */
+/* Added check so that asm/page.h is not included for hppa arch */
+/* Ola Lundqvist, to work around Debian Bug#485958 & Bug#486104*/
+#if !defined(__hppa__) && !defined(__mips__) && !defined(__alpha__)
+# include "asm/page.h"	/* #define for PAGE_* */
+#endif
+
+#ifndef PAGE_MASK
+#define PAGE_MASK (~(sysconf(_SC_PAGESIZE) - 1))
+#endif
 
 #include "globals.h"
 #define DPMS_SERVER

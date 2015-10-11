@@ -68,6 +68,12 @@ public:
   void addClient(network::Socket* sock, bool reverse);
   void disconnectClients();
 
+#ifdef RANDR
+  void setSize(int w, int h) {
+    width_ = w; height_ = h; server->setPixelBuffer(this);
+  }
+#endif
+  
   // QueryConnect methods called from X server code
   // getQueryTimeout()
   //   Returns the timeout associated with a particular
@@ -126,5 +132,9 @@ private:
   void* queryConnectId;
   rfb::CharArray queryConnectAddress;
   rfb::CharArray queryConnectUsername;
+#ifdef RANDR
+  int initialWidth;
+  int getStride() const { return initialWidth; }
+#endif
 };
 #endif

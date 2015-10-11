@@ -32,12 +32,19 @@
 
 #include <list>
 
+/* Tunnelling support. */
+#define TUNNEL_PORT_OFFSET 5500
+
 namespace network {
+
+  /* Tunnelling support. */
+  int findFreeTcpPort (void);
 
   class TcpSocket : public Socket {
   public:
     TcpSocket(int sock, bool close=true);
-    TcpSocket(const char *name, int port);
+    // version can be 4 or 6 to force IPv4 or IPv6 respectively
+    TcpSocket(const char *name, int port, int version = 0);
     virtual ~TcpSocket();
 
     virtual char* getMyAddress();

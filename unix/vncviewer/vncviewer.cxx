@@ -41,6 +41,7 @@ rfb::LogWriter vlog("main");
 
 using namespace network;
 using namespace rfb;
+using namespace std;
 
 IntParameter pointerEventInterval("PointerEventInterval",
                                   "Time in milliseconds to rate-limit"
@@ -92,8 +93,17 @@ BoolParameter sendPrimary("SendPrimary",
 
 BoolParameter listenMode("listen", "Listen for connections from VNC servers",
                          false);
+BoolParameter popupXDialog("XDialog",
+                           "Popup an X dialog when asking for server, "
+                           "username and password. Default no when "
+                           "running from command line",
+                           !isatty(0));
 StringParameter geometry("geometry", "X geometry specification", "");
 StringParameter displayname("display", "The X display", "");
+StringParameter xEmbed("XEmbed", "Embed into another window with a given id", "");
+
+/* Support for tunnelling */
+StringParameter via("via", "Gateway to tunnel via", "");
 
 char aboutText[256];
 char* programName;
@@ -143,7 +153,7 @@ static XLoginIconifier xloginIconifier;
 static void usage()
 {
   fprintf(stderr,
-          "\nusage: %s [parameters] [host:displayNum] [parameters]\n"
+          "\nusage: %s [-4|-6] [parameters] [host:displayNum] [parameters]\n"
           "       %s [parameters] -listen [port] [parameters]\n",
           programName,programName);
   fprintf(stderr,"\n"
@@ -155,6 +165,61 @@ static void usage()
           "Parameter names are case-insensitive.  The parameters are:\n\n");
   Configuration::listParams(79, 14);
   exit(1);
+}
+
+/* Tunnelling support. */
+static void
+interpretViaParam (char **gatewayHost, char **remoteHost,
+                  int *remotePort, char **vncServerName,
+                  int localPort)
+{
+  const int SERVER_PORT_OFFSET = 5900;
+  char *pos = strchr (*vncServerName, ':');
+  if (pos == NULL)
+    *remotePort = SERVER_PORT_OFFSET;
+  else {
+    int portOffset = SERVER_PORT_OFFSET;
+    size_t len;
+    *pos++ = '\0';
+    len = strlen (pos);
+    if (*pos == ':') {
+      /* Two colons is an absolute port number, not an offset. */
+      pos++;
+      len--;
+      portOffset = 0;
+    }
+    if (!len || strspn (pos, "-0123456789") != len )
+      usage ();
+    *remotePort = atoi (pos) + portOffset;
+  }
+
+  if (**vncServerName != '\0')
+    *remoteHost = *vncServerName;
+
+  *gatewayHost = strDup (via.getValueStr ());
+  *vncServerName = new char[50];
+  sprintf (*vncServerName, "localhost::%d", localPort);
+}
+
+static void
+createTunnel (const char *gatewayHost, const char *remoteHost,
+             int remotePort, int localPort)
+{
+  char *cmd = getenv ("VNC_VIA_CMD");
+  char *percent;
+  char lport[10], rport[10];
+  sprintf (lport, "%d", localPort);
+  sprintf (rport, "%d", remotePort);
+  setenv ("G", gatewayHost, 1);
+  setenv ("H", remoteHost, 1);
+  setenv ("R", rport, 1);
+  setenv ("L", lport, 1);
+  if (!cmd)
+    cmd = "/usr/bin/ssh -f -L \"$L\":\"$H\":\"$R\" \"$G\" sleep 20";
+  /* Compatibility with TightVNC's method. */
+  while ((percent = strchr (cmd, '%')) != NULL)
+    *percent = '$';
+  system (cmd);
 }
 
 int main(int argc, char** argv)
@@ -175,8 +240,16 @@ int main(int argc, char** argv)
   programName = argv[0];
   char* vncServerName = 0;
   Display* dpy = 0;
+  int ipVersion = 0;
 
   for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "-4")) {
+      ipVersion = 4;
+      continue;
+    } else if(!strcmp(argv[i], "-6")) {
+      ipVersion = 6;
+      continue;
+    }
     if (Configuration::setParam(argv[i]))
       continue;
 
@@ -190,9 +263,11 @@ int main(int argc, char** argv)
       usage();
     }
 
-    if (vncServerName)
-      usage();
     vncServerName = argv[i];
+    // Strip vnc:// prefix from server name
+    if (strncmp(vncServerName, "vnc://", 6) == 0) {
+      vncServerName = &vncServerName[6];
+    }
   }
 
   // Create .vnc in the user's home directory if it doesn't already exist
@@ -207,6 +282,19 @@ int main(int argc, char** argv)
     vlog.error("Could not create .vnc directory: environment variable $HOME not set.");
 
   try {
+    /* Tunnelling support. */
+    if (strlen (via.getValueStr ()) > 0) {
+      char *gatewayHost = "";
+      char *remoteHost = "localhost";
+      int localPort = findFreeTcpPort ();
+      int remotePort;
+      if (!vncServerName)
+        usage();
+      interpretViaParam (&gatewayHost, &remoteHost, &remotePort,
+                        &vncServerName, localPort);
+      createTunnel (gatewayHost, remoteHost, remotePort, localPort);
+    }
+
     Socket* sock = 0;
 
     if (listenMode) {
@@ -238,7 +326,7 @@ int main(int argc, char** argv)
 
     TXWindow::init(dpy, "Vncviewer");
     xloginIconifier.iconify(dpy);
-    CConn cc(dpy, argc, argv, sock, vncServerName, listenMode);
+    CConn cc(dpy, argc, argv, sock, vncServerName, listenMode, ipVersion);
 
     // X events are processed whenever reading from the socket would block.
 
@@ -251,7 +339,7 @@ int main(int argc, char** argv)
     vlog.info(e.str());
   } catch (rdr::Exception& e) {
     vlog.error(e.str());
-    if (dpy) {
+    if (popupXDialog) {
       TXMsgBox msgBox(dpy, e.str(), MB_OK, "VNC Viewer: Information");
       msgBox.show();
     }

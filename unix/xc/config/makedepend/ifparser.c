@@ -296,12 +296,20 @@ parse_product (IfParser *g, const char *cp, long *valp)
 
       case '/':
 	DO (cp = parse_product (g, cp + 1, &rightval));
-	*valp = (*valp / rightval);
+	if (rightval == 0) {
+		*valp = 0;
+	} else {
+		*valp = (*valp / rightval);
+	}
 	break;
 
       case '%':
 	DO (cp = parse_product (g, cp + 1, &rightval));
-	*valp = (*valp % rightval);
+	if (rightval == 0) {
+	      	*valp = 0;
+        } else {
+		*valp = (*valp % rightval);
+	}
 	break;
     }
     return cp;

@@ -76,7 +76,7 @@ XF86BIGFOBJS = xf86bigfont.o
 #if BuildXCSecurity
     SECURITYSRCS = security.c
     SECURITYOBJS = security.o
- SERVERCONFIGDIR = ServerConfigDir
+ SERVERCONFIGDIR = /etc/X11/xserver
    POLICYFILEDEF = -DDEFAULTPOLICYFILE=\"$(SERVERCONFIGDIR)/SecurityPolicy\"
 #endif
 #if BuildCup

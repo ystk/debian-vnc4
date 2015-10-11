@@ -5,7 +5,7 @@
 #define BuildPexExt NO
 #define BuildNls NO
 #define BuildXIE NO
-#define BuildGlxExt NO
+#define BuildGlxExt YES
 #define XnestServer NO
 #define XprtServer NO
 

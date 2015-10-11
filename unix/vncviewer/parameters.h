@@ -37,6 +37,8 @@ extern rfb::BoolParameter sendClipboard;
 extern rfb::BoolParameter sendPrimary;
 extern rfb::BoolParameter fullScreen;
 extern rfb::StringParameter geometry;
+extern rfb::BoolParameter popupXDialog;
+extern rfb::StringParameter xEmbed;
 
 extern char aboutText[];
 extern char* programName;

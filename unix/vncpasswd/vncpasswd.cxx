@@ -117,6 +117,9 @@ int main(int argc, char** argv)
       continue;
     }
 
+    if (strlen(passwd.buf) > 8)
+      fprintf(stderr,"Password too long - only the first 8 characters will be used\n");
+
     FILE* fp = fopen(fname,"w");
     if (!fp) {
       fprintf(stderr,"Couldn't open %s for writing\n",fname);

@@ -48,7 +48,7 @@ class CConn : public rfb::CConnection, public rfb::UserPasswdGetter,
 public:
 
   CConn(Display* dpy_, int argc_, char** argv_, network::Socket* sock_,
-        char* vncServerName, bool reverse=false);
+        char* vncServerName, bool reverse=false, int ipVersion=0);
   ~CConn();
 
   // TXDeleteWindowCallback methods

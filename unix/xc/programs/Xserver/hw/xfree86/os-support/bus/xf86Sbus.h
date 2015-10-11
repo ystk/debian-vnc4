@@ -27,6 +27,8 @@
 
 #if defined(linux)
 #include <asm/types.h>
+/* Next line is added by Ola Lundqvist to solve Debian Bug#477659. */
+#include <linux/fb.h>
 #include <asm/fbio.h>
 #include <asm/openpromio.h>
 #elif defined(SVR4)

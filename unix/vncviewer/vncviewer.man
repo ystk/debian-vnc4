@@ -1,4 +1,4 @@
-.TH vncviewer 1 "03 Mar 2005" "RealVNC Ltd" "Virtual Network Computing"
+.TH vncviewer 1 "08 Nov 2006" "RealVNC Ltd" "Virtual Network Computing"
 .SH NAME
 vncviewer \- VNC viewer for X
 .SH SYNOPSIS
@@ -102,6 +102,11 @@ Xvnc supports reverse connections with a helper program called
 .B vncconfig.
 
 .TP
+.B \-XDialog
+Popup an X dialog when asking for server, username and password.  Default is to
+not popup when vncviewer is start from command line.
+
+.TP
 .B \-passwd \fIpassword-file\fP
 If you are on a filesystem which gives you access to the password file used by
 the server, you can specify it here to avoid typing it in.  It will usually be
@@ -173,6 +178,23 @@ specific source file if you know the name of its "LogWriter".  Default is
 This option specifies the key which brings up the popup menu.  The key is
 specified as an X11 keysym name (these can be obtained by removing the XK_
 prefix from the entries in "/usr/include/X11/keysymdef.h").  Default is F8.
+
+.TP
+\fB\-via\fR \fIgateway\fR
+Automatically create encrypted TCP tunnel to the \fIgateway\fR machine
+before connection, connect to the \fIhost\fR through that tunnel
+(TightVNC\-specific). By default, this option invokes SSH local port
+forwarding, assuming that SSH client binary can be accessed as
+/usr/bin/ssh. Note that when using the \fB\-via\fR option, the host
+machine name should be specified as known to the gateway machine, e.g.
+"localhost" denotes the \fIgateway\fR, not the machine where vncviewer
+was launched. The environment variable \fIVNC_VIA_CMD\fR can override
+the default tunnel command of
+\fB/usr/bin/ssh\ -f\ -L\ "$L":"$H":"$R"\ "$G"\ sleep\ 20\fR.  The tunnel
+command is executed with the environment variables \fIL\fR, \fIH\fR,
+\fIR\fR, and \fIG\fR taken the values of the local port number, the remote
+host, the port number on the remote host, and the gateway machine
+respectively.
 
 .SH SEE ALSO
 .BR Xvnc (1),

@@ -857,6 +857,7 @@ static __inline__ void stw_u(unsigned long val, unsigned short *p)
 
 unsigned int IOPortBase;  /* Memory mapped I/O port area */
 
+#    if defined(__mips__)
 static __inline__ void
 outb(unsigned PORT_SIZE port, unsigned char val)
 {
@@ -893,8 +894,6 @@ inl(unsigned PORT_SIZE port)
 	return *(volatile unsigned int*)(((unsigned PORT_SIZE)(port))+IOPortBase);
 }
 
-
-#    if defined(__mips__)
 static __inline__ unsigned long ldq_u(unsigned long * r11)
 {
 	unsigned long r1;
@@ -1243,6 +1242,35 @@ inl(unsigned short port)
 
 #    define mem_barrier()	eieio()
 #    define write_mem_barrier()	eieio()
+
+#   elif defined(__arm__) && defined(__linux__)
+
+/* for Linux on ARM, we use the LIBC inx/outx routines */
+/* note that the appropriate setup via "ioperm" needs to be done */
+/*  *before* any inx/outx is done. */
+#include <sys/io.h>
+
+static __inline__ void
+xf_outb(unsigned short port, unsigned char val)
+{
+    outb(val, port);
+}
+
+static __inline__ void
+xf_outw(unsigned short port, unsigned short val)
+{
+    outw(val, port);
+}
+
+static __inline__ void
+xf_outl(unsigned short port, unsigned int val)
+{
+    outl(val, port);
+}
+
+#define outb xf_outb
+#define outw xf_outw
+#define outl xf_outl
 
 #   else /* ix86 */
 

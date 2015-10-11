@@ -65,4 +65,9 @@ $(library): $(OBJS)
 	$(AR) $(library) $(OBJS)
 	$(RANLIB) $(library)
 
+DIR_CFLAGS = -DPIC -fPIC
+DIR_CXXFLAGS = -DPIC -fPIC
+
+DIR_CFLAGS = -DPIC -fPIC
+DIR_CXXFLAGS = -DPIC -fPIC
 # followed by boilerplate.mk

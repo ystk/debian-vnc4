@@ -255,7 +255,9 @@ InstallNamedTargetNoClobber(install,file.ad,$(INSTAPPFLAGS),$(XAPPLOADDIR),class
 
 /* On x86, determine whether to build with MTRR support */
 #ifndef HasMTRRSupport
-# if defined (i386Architecture) || defined (x86_64Architecture)
+# if defined (i386Architecture)
+/* || defined (x86_64Architecture) */
+/* Temporarily disable MTRR support for amd64 arch */
 /* There is no certain way to know if <asm/mtrr.h> is available,
    but it made it into kernel 2.2, so... */
 #  if OSMajorVersion > 2 || (OSMajorVersion == 2 && OSMinorVersion >= 2)
@@ -313,6 +315,8 @@ InstallNamedTargetNoClobber(install,file.ad,$(INSTAPPFLAGS),$(XAPPLOADDIR),class
 #    define BuildXF86DRI	NO
 #  endif
 #endif
+#undef BuildXF86DRI
+#define BuildXF86DRI NO
 
 /*
  * Build shared libGL and the DRI modules without -fPIC on some architectures.
@@ -744,6 +748,17 @@ InstallNamedTargetNoClobber(install,file.ad,$(INSTAPPFLAGS),$(XAPPLOADDIR),class
 # define VendorHasX11R6_3libXext	YES	/* XC or XFree86 >= 3.3.1 */
 #endif
 
+#ifdef Aarch64Architecture
+/* Cargoculted from Arm32Architecture w/ -D_XSERVER64 added */
+# define DefaultCCOptions	-fsigned-char
+# ifndef OptimizedCDebugFlags
+#  define OptimizedCDebugFlags	-O3
+# endif
+# define LinuxMachineDefines	-D__aarch64__
+# define ServerOSDefines	XFree86ServerOSDefines -DDDXTIME -DPART_NET
+# define ServerExtraDefines	-DGCCUSESGAS XFree86ServerDefines -D_XSERVER64
+#endif /* Aarch64Architecture */
+
 #ifdef AlphaArchitecture
 # ifndef OptimizedCDebugFlags
 #  define OptimizedCDebugFlags	DefaultGcc2AxpOpt
@@ -816,7 +831,11 @@ InstallNamedTargetNoClobber(install,file.ad,$(INSTAPPFLAGS),$(XAPPLOADDIR),class
 # endif
 # define LinuxMachineDefines	-D__powerpc__
 # define ServerOSDefines	XFree86ServerOSDefines -DDDXTIME -DPART_NET
+# ifdef __powerpc64__
+# define ServerExtraDefines	-DGCCUSESGAS XFree86ServerDefines -D_XSERVER64
+# else
 # define ServerExtraDefines	-DGCCUSESGAS XFree86ServerDefines
+# endif
 #endif /* PpcArchitecture */
 
 #ifdef s390Architecture

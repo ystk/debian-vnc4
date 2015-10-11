@@ -193,6 +193,9 @@ XserverDesktop::XserverDesktop(ScreenPtr pScreen_,
   else
     data = new rdr::U8[pScreen->width * pScreen->height * (format.bpp/8)];
   colourmap = this;
+#ifdef RANDR
+  initialWidth = width_;
+#endif
 
   serverReset(pScreen);
 
@@ -714,7 +717,11 @@ void XserverDesktop::grabRegion(const rfb::Region& region)
   grabbing = true;
 
   int bytesPerPixel = format.bpp/8;
+#ifdef RANDR
+  int bytesPerRow = initialWidth * bytesPerPixel;
+#else
   int bytesPerRow = pScreen->width * bytesPerPixel;
+#endif
 
   std::vector<rfb::Rect> rects;
   std::vector<rfb::Rect>::iterator i;

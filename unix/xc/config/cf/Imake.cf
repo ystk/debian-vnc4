@@ -211,6 +211,10 @@ XCOMM $XFree86: xc/config/cf/Imake.cf,v 3.81 2003/02/18 16:51:45 tsi Exp $
 #   define PpcArchitecture
 #   undef __powerpc__
 # endif
+# ifdef __aarch64__
+#   define Aarch64Architecture
+#   undef __powerpc__
+# endif
 #endif /* NetBSD */
 
 #ifdef __FreeBSD__
@@ -727,6 +731,10 @@ XCOMM Keep cpp from replacing path elements containing i486/i586/i686
 #   define s390Architecture
 #  undef __s390__
 # endif /* s390 */
+# ifdef __aarch64__
+#  define Aarch64Architecture
+#  undef __aarch64__
+# endif
 # ifdef __alpha
 #  define AlphaArchitecture
 #  undef __alpha
@@ -756,6 +764,7 @@ XCOMM Keep cpp from replacing path elements containing i486/i586/i686
 #   define PpcArchitecture
 #  endif
 #  undef __powerpc__
+#  undef pixel /* gcc >= 4.7 defines this, causing macro recursion w/ Imake */
 # endif
 # ifdef sparc
 #  define SparcArchitecture

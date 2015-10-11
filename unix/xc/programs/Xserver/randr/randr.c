@@ -726,10 +726,31 @@ ProcRRSetScreenConfig (ClientPtr client)
      * timestamp, then the config information isn't up-to-date and
      * can't even be validated
      */
+    /* A DIRTY WORKAROUND.
+     * Looks like under some reasons, this test fails, although 32bit timestamp
+     * passed in stuff->configTimestamp is exactly the same as was returned
+     * in RRGetScreenInfo just before. So 'months' parts differ. Maybe
+     * some bug elsewhere, causing 'months' jump? Or maybe it could happen
+     * if enough time passed since previous configuration? I'm afraid that
+     * both have happened here ...
+     * Since I have no time to investigate details, I'm just replacing this
+     * with 32bit compare. Probability of config times that differ only
+     * in months is extremely low ... */
     if (CompareTimeStamps (configTime, pScrPriv->lastConfigTime) != 0)
     {
-	rep.status = RRSetConfigInvalidConfigTime;
-	goto sendReply;
+	if (pScrPriv->lastConfigTime.milliseconds == stuff->configTimestamp)
+	{
+	    ErrorF("Point X: last: %lu %lu, new: %lu %lu\n",
+			    pScrPriv->lastConfigTime.months,
+			    pScrPriv->lastConfigTime.milliseconds,
+			    configTime.months,
+			    configTime.milliseconds);
+	}
+	else
+	{
+	    rep.status = RRSetConfigInvalidConfigTime;
+	    goto sendReply;
+	}
     }
     
     /*

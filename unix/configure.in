@@ -65,6 +65,18 @@ AC_SUBST(ZLIB_DIR)
 AC_SUBST(ZLIB_INCLUDE)
 AC_SUBST(ZLIB_LIB)
 
+AC_ARG_WITH(fb,
+[  --with-fb               use the new 'fb' framebuffer implementation])
+if test "$with_installed_zlib" = yes; then
+  echo "using 'fb' framebuffer"
+  USE_FB=YES
+else
+  echo "using 'mfb' and 'cfb' framebuffer"
+  USE_FB=NO
+fi
+
+AC_SUBST(USE_FB)
+
 BOILERPLATE=boilerplate.mk
 
 if (sh -c "make --version" 2>/dev/null | grep GNU 2>&1 >/dev/null); then
@@ -79,4 +91,5 @@ AC_OUTPUT(Makefile:common.mk:Makefile.in:$BOILERPLATE \
           vncviewer/Makefile:common.mk:vncviewer/Makefile.in:$BOILERPLATE \
           vncconfig/Makefile:common.mk:vncconfig/Makefile.in:$BOILERPLATE \
           vncpasswd/Makefile:common.mk:vncpasswd/Makefile.in:$BOILERPLATE \
+          xc/config/cf/vnc.def \
 )

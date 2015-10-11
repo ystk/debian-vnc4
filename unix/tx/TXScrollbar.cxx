@@ -44,8 +44,10 @@ TXScrollbar::~TXScrollbar()
 
 void TXScrollbar::set(int limit_, int start_, int len_, bool vert)
 {
-  assert(limit_ > 0 && len_ >= 0 && len_ <= limit_);
+  // This assertion fails under certain window managers.
+  // assert(limit_ > 0 && len_ >= 0 && len_ <= limit_);
 
+  if (len_ > limit_) len_ = limit_;
   if (start_ < 0) start_ = 0;
   if (start_ > limit_ - len_) start_ = limit_ - len_;
 

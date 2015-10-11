@@ -18,6 +18,8 @@
 
 #include <stdio.h>
 
+#include "XserverDesktop.h"
+
 extern "C" {
 #define class c_class
 #define NEED_EVENTS
@@ -48,7 +50,6 @@ extern "C" {
 #undef min
 #include <network/TcpSocket.h>
 
-#include "XserverDesktop.h"
 #include "vncHooks.h"
 #include "vncExtInit.h"
 
@@ -751,7 +752,7 @@ static int ProcVncExtGetQueryConnect(ClientPtr client)
   rep.timeout = qcTimeout;
   rep.addrLen = qcTimeout ? strlen(qcAddress) : 0;
   rep.userLen = qcTimeout ? strlen(qcUsername) : 0;
-  rep.opaqueId = (CARD32)queryConnectId;
+  rep.opaqueId = (CARD32)(long)queryConnectId;
   rep.length = (rep.userLen + rep.addrLen + 3) >> 2;
   if (client->swapped) {
     swaps(&rep.sequenceNumber, n);
